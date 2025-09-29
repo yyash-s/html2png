@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 COPY package.json package.json
 
-# Use npm install with modern flag and allow legacy peer deps to be safe during build
+# Install production deps; use legacy peer deps to avoid resolution failures during cloud build
 RUN npm install --omit=dev --legacy-peer-deps
 
 COPY . .
