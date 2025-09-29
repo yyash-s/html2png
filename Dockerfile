@@ -1,5 +1,6 @@
 FROM node:20-bullseye-slim
 
+# Install required packages for headless Chromium
 RUN apt-get update && apt-get install -y \
   ca-certificates fonts-liberation libasound2 libatk1.0-0 libatk-bridge2.0-0 \
   libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgbm1 \
@@ -10,7 +11,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 COPY package.json package.json
-RUN npm install --production
+
+# Use npm install with modern flag and allow legacy peer deps to be safe during build
+RUN npm install --omit=dev --legacy-peer-deps
+
 COPY . .
 ENV PORT=3000
 EXPOSE 3000
