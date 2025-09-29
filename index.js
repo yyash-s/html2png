@@ -1,6 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const chromium = require('chrome-aws-lambda');
+const puppeteer = require('puppeteer');
+
 const app = express();
 app.use(bodyParser.text({ type: ['text/html','application/xhtml+xml','text/plain'], limit: '10mb' }));
 
@@ -10,11 +11,10 @@ app.post('/render', async (req, res) => {
   const height = parseInt(req.query.height) || 800;
   let browser = null;
   try {
-    browser = await chromium.puppeteer.launch({
-      args: chromium.args,
+    browser = await puppeteer.launch({
+      args: ['--no-sandbox','--disable-setuid-sandbox'],
       defaultViewport: { width, height },
-      executablePath: await chromium.executablePath,
-      headless: chromium.headless
+      headless: true
     });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
