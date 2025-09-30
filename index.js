@@ -24,7 +24,7 @@ async function uploadBufferAndGetSas(buffer, filename) {
 
   const blobServiceClient = BlobServiceClient.fromConnectionString(AZ_CONN);
   const containerClient = blobServiceClient.getContainerClient(AZ_CONTAINER);
-  await containerClient.createIfNotExists({ access: 'private' });
+  await containerClient.createIfNotExists();
 
   const blockBlobClient = containerClient.getBlockBlobClient(filename);
   await blockBlobClient.uploadData(buffer, { blobHTTPHeaders: { blobContentType: 'image/png' } });
