@@ -51,6 +51,10 @@ async function uploadBufferAndGetSas(buffer, filename) {
   return `${blockBlobClient.url}?${sasToken}`;
 }
 
+// after imports and middleware
+const LAUNCH_ARGS = ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--single-process'];
+const NAV_TIMEOUT = 120000; // 2 minutes
+
 app.post('/render', async (req, res) => {
   const html = req.body || '<html><body><h1>No HTML provided</h1></body></html>';
   const width = parseInt(req.query.width) || 1200;
@@ -58,26 +62,39 @@ app.post('/render', async (req, res) => {
   let browser = null;
   try {
     browser = await puppeteer.launch({
-      args: ['--no-sandbox','--disable-setuid-sandbox'],
+      args: LAUNCH_ARGS,
       defaultViewport: { width, height },
-      headless: true
+      headless: true,
+      // slowMo: 50 // uncomment if you want slowed rendering for debugging
     });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    const buffer = await page.screenshot({ type: 'png', fullPage: true });
 
-    // Upload to Blob and return SAS URL
+    const page = await browser.newPage();
+    // capture console and page errors to logs
+    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+    page.on('pageerror', err => console.error('PAGE ERROR:', err));
+    page.setDefaultNavigationTimeout(NAV_TIMEOUT);
+    page.setDefaultTimeout(NAV_TIMEOUT);
+
+    // use a conservative waitUntil and explicit timeout
+    await page.setContent(html, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT });
+
+    // optional small delay to let fonts/resources stabilize (milliseconds)
+    await page.waitForTimeout(500);
+
+    const buffer = await page.screenshot({ type: 'png', fullPage: true, timeout: NAV_TIMEOUT });
+    // proceed with blob upload / response as before
     const filename = `render-${Date.now()}.png`;
     const sasUrl = await uploadBufferAndGetSas(buffer, filename);
-
     res.json({ url: sasUrl, filename });
   } catch (err) {
     console.error('Render error', err);
-    res.status(500).send('Rendering failed');
+    // include err.stack in response only for debugging; remove in production
+    res.status(500).json({ error: 'Rendering failed', message: err.message });
   } finally {
     if (browser) await browser.close();
   }
 });
+
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => console.log(`html2png listening on ${port}`));
