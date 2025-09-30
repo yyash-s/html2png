@@ -1,11 +1,11 @@
 const API_KEY = process.env.Y_API;
 
-app.use((req, res, next) => {
-  if (!API_KEY) return next();
-  const key = req.get('x-api-key');
-  if (key !== API_KEY) return res.status(401).send('Unauthorized');
-  next();
-});
+//app.use((req, res, next) => {
+  //if (!API_KEY) return next();
+  //const key = req.get('x-api-key');
+  //if (key !== API_KEY) return res.status(401).send('Unauthorized');
+  //next();
+//});
 
 
 const express = require('express');
