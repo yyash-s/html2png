@@ -1,19 +1,55 @@
-const API_KEY = process.env.Y_API;
-
-//app.use((req, res, next) => {
-  //if (!API_KEY) return next();
-  //const key = req.get('x-api-key');
-  //if (key !== API_KEY) return res.status(401).send('Unauthorized');
-  //next();
-//});
-
-
 const express = require('express');
 const bodyParser = require('body-parser');
 const puppeteer = require('puppeteer');
+const { BlobServiceClient, StorageSharedKeyCredential, generateBlobSASQueryParameters, ContainerSASPermissions } = require('@azure/storage-blob');
 
 const app = express();
 app.use(bodyParser.text({ type: ['text/html','application/xhtml+xml','text/plain'], limit: '10mb' }));
+
+// API key middleware (adjust variable name if needed)
+const API_KEY = process.env.Y_API;
+app.use((req, res, next) => {
+  if (!API_KEY) return next();
+  const key = req.get('x-api-key');
+  if (key !== API_KEY) return res.status(401).send('Unauthorized');
+  next();
+});
+
+// Blob helpers
+const AZ_CONN = process.env.Y_BLOB_CONN;      // Storage connection string
+const AZ_CONTAINER = process.env.Y_BLOB_CONTAINER || 'renders';
+
+async function uploadBufferAndGetSas(buffer, filename) {
+  if (!AZ_CONN) throw new Error('Y_BLOB_CONN not configured');
+
+  const blobServiceClient = BlobServiceClient.fromConnectionString(AZ_CONN);
+  const containerClient = blobServiceClient.getContainerClient(AZ_CONTAINER);
+  await containerClient.createIfNotExists({ access: 'private' });
+
+  const blockBlobClient = containerClient.getBlockBlobClient(filename);
+  await blockBlobClient.uploadData(buffer, { blobHTTPHeaders: { blobContentType: 'image/png' } });
+
+  // Generate SAS (using account key extracted from connection string)
+  // Parse connection string to get AccountName and AccountKey
+  const match = AZ_CONN.match(/AccountName=([^;]+);AccountKey=([^;]+);/);
+  if (!match) {
+    // If connection string doesn't contain key (unlikely), return the blob URL (may be private)
+    return blockBlobClient.url;
+  }
+  const accountName = match[1];
+  const accountKey = match[2];
+  const sharedKey = new StorageSharedKeyCredential(accountName, accountKey);
+
+  const expiresOn = new Date(new Date().valueOf() + 15 * 60 * 1000); // 15 minutes
+  const sasToken = generateBlobSASQueryParameters({
+    containerName: AZ_CONTAINER,
+    blobName: filename,
+    permissions: ContainerSASPermissions.parse('r'),
+    expiresOn
+  }, sharedKey).toString();
+
+  return `${blockBlobClient.url}?${sasToken}`;
+}
 
 app.post('/render', async (req, res) => {
   const html = req.body || '<html><body><h1>No HTML provided</h1></body></html>';
@@ -29,8 +65,12 @@ app.post('/render', async (req, res) => {
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: 'networkidle0' });
     const buffer = await page.screenshot({ type: 'png', fullPage: true });
-    res.setHeader('Content-Type', 'image/png');
-    res.send(buffer);
+
+    // Upload to Blob and return SAS URL
+    const filename = `render-${Date.now()}.png`;
+    const sasUrl = await uploadBufferAndGetSas(buffer, filename);
+
+    res.json({ url: sasUrl, filename });
   } catch (err) {
     console.error('Render error', err);
     res.status(500).send('Rendering failed');
