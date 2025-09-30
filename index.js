@@ -75,13 +75,13 @@ app.post('/render', async (req, res) => {
     page.setDefaultNavigationTimeout(NAV_TIMEOUT);
     page.setDefaultTimeout(NAV_TIMEOUT);
 
-    // use a conservative waitUntil and explicit timeout
     await page.setContent(html, { waitUntil: 'networkidle2', timeout: NAV_TIMEOUT });
 
-    // optional small delay to let fonts/resources stabilize (milliseconds)
-    await page.waitForTimeout(500);
-
+    // small delay to let fonts/resources stabilize (works across Puppeteer versions)
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     const buffer = await page.screenshot({ type: 'png', fullPage: true, timeout: NAV_TIMEOUT });
+
     // proceed with blob upload / response as before
     const filename = `render-${Date.now()}.png`;
     const sasUrl = await uploadBufferAndGetSas(buffer, filename);
